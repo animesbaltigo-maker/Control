@@ -223,7 +223,8 @@ async def metrics_text(period: str) -> str:
     for result in results:
         name = esc(result.get("name") or result.get("bot_id"))
         if not result.get("ok"):
-            lines.append(f"🤖 <b>{name}:</b>\n<blockquote>🔴 Offline ou sem resposta</blockquote>\n")
+            error = esc(result.get("error") or f"HTTP {result.get('http_status')}" if result.get("http_status") else "sem resposta")
+            lines.append(f"🤖 <b>{name}:</b>\n<blockquote>🔴 Offline\n• <b>Erro:</b> <code>{error}</code></blockquote>\n")
             continue
         lines.append(
             f"🤖 <b>{name}:</b>\n"
@@ -235,10 +236,30 @@ async def metrics_text(period: str) -> str:
     return "\n".join(lines)
 
 
+async def health_text() -> str:
+    results = await asyncio.gather(*(CLIENT.health(target) for target in TARGETS))
+    lines = ["🟢 <b>Status dos bots</b>", ""]
+    for result in results:
+        name = esc(result.get("name") or result.get("bot_id"))
+        if result.get("ok"):
+            uptime = int(result.get("uptime_seconds") or 0)
+            lines.append(f"🟢 <b>{name}</b>\n<blockquote>online • uptime {uptime}s</blockquote>")
+        else:
+            error = esc(result.get("error") or f"HTTP {result.get('http_status')}" if result.get("http_status") else "sem resposta")
+            lines.append(f"🔴 <b>{name}</b>\n<blockquote><code>{error}</code></blockquote>")
+    return "\n\n".join(lines)
+
+
 async def metricas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await require_owner(update):
         return
     await update.effective_message.reply_text(await metrics_text(normalize_period(context.args or [])), parse_mode=ParseMode.HTML)
+
+
+async def health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await require_owner(update):
+        return
+    await update.effective_message.reply_text(await health_text(), parse_mode=ParseMode.HTML)
 
 
 async def diagnostico(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -284,12 +305,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await query.edit_message_text(await metrics_text("total"), parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
         return
     if data == "ctl|status":
-        results = await asyncio.gather(*(CLIENT.health(target) for target in TARGETS))
-        text = "🟢 <b>Status dos bots</b>\n\n" + "\n".join(
-            f"{'🟢' if item.get('ok') else '🔴'} <b>{esc(item.get('name'))}</b> — {'online' if item.get('ok') else 'offline'}"
-            for item in results
-        )
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
+        await query.edit_message_text(await health_text(), parse_mode=ParseMode.HTML, reply_markup=main_keyboard())
         return
     if data == "ctl|broadcast":
         draft = BroadcastDraft()
@@ -396,7 +412,8 @@ def main() -> None:
     app.add_handler(CommandHandler("id", my_id))
     app.add_handler(CommandHandler(["start", "central"], central))
     app.add_handler(CommandHandler(["status", "diagnostico"], diagnostico))
-    app.add_handler(CommandHandler("metricas", metricas))
+    app.add_handler(CommandHandler(["metricas", "metrics"], metricas))
+    app.add_handler(CommandHandler(["health", "saude"], health))
     app.add_handler(CommandHandler("block", block))
     app.add_handler(CommandHandler("broadcast", broadcast))
     app.add_handler(CallbackQueryHandler(callbacks, pattern=r"^(ctl|bc)\|"))
