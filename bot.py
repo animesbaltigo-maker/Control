@@ -217,6 +217,26 @@ def normalize_period(args: list[str]) -> str:
     return (args[0] if args else "total").strip().lower() or "total"
 
 
+def premium_lines(result: dict[str, Any]) -> list[str]:
+    premium = result.get("premium")
+    if not isinstance(premium, dict) or not premium.get("available"):
+        return []
+    lines = [
+        f"• <b>Premium ativo:</b> {int(premium.get('active_total') or 0)}",
+        f"• <b>Registros de planos:</b> {int(premium.get('total_records') or 0)}",
+    ]
+    plans = premium.get("plans")
+    if isinstance(plans, list):
+        for plan in plans:
+            if not isinstance(plan, dict):
+                continue
+            name = esc(plan.get("name") or plan.get("code") or "Plano")
+            active = int(plan.get("active") or 0)
+            total = int(plan.get("total") or 0)
+            lines.append(f"  - <b>{name}:</b> {active} ativos / {total} registros")
+    return lines
+
+
 async def metrics_text(period: str) -> str:
     results = await asyncio.gather(*(CLIENT.metrics(target, period) for target in TARGETS))
     lines = [f"📊 <b>Estatísticas • Control</b>", ""]
@@ -226,13 +246,14 @@ async def metrics_text(period: str) -> str:
             error = esc(result.get("error") or f"HTTP {result.get('http_status')}" if result.get("http_status") else "sem resposta")
             lines.append(f"🤖 <b>{name}:</b>\n<blockquote>🔴 Offline\n• <b>Erro:</b> <code>{error}</code></blockquote>\n")
             continue
-        lines.append(
-            f"🤖 <b>{name}:</b>\n"
-            f"<blockquote>• <b>Usuários ativos:</b> {int(result.get('users_active') or 0)}\n"
-            f"• <b>Usuários inativos:</b> {int(result.get('users_inactive') or 0)}\n"
-            f"• <b>Usuários banidos:</b> {int(result.get('users_banned') or 0)}\n"
-            f"• <b>Administradores:</b> {int(result.get('admins') or 0)}</blockquote>\n"
-        )
+        details = [
+            f"• <b>Usuários ativos:</b> {int(result.get('users_active') or 0)}",
+            f"• <b>Usuários inativos:</b> {int(result.get('users_inactive') or 0)}",
+            f"• <b>Usuários banidos:</b> {int(result.get('users_banned') or 0)}",
+            f"• <b>Administradores:</b> {int(result.get('admins') or 0)}",
+        ]
+        details.extend(premium_lines(result))
+        lines.append(f"🤖 <b>{name}:</b>\n<blockquote>{chr(10).join(details)}</blockquote>\n")
     return "\n".join(lines)
 
 
