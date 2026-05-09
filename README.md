@@ -5,6 +5,8 @@ Bot central para administrar os bots Baltigo pelo Telegram.
 ## Comandos
 
 - `/central` abre o painel.
+- `/id` mostra seu ID do Telegram para configurar o dono.
+- `/status` ou `/diagnostico` mostra owners e bots configurados.
 - `/metricas` mostra estatisticas globais.
 - `/broadcast` monta uma campanha global com selecao de bots.
 - `/block 1852596083` bloqueia um usuario em todos os bots conectados.

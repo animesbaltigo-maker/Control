@@ -21,7 +21,7 @@ def _load_env_file() -> None:
             continue
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
-        os.environ.setdefault(key, value)
+        os.environ[key] = value
 
 
 _load_env_file()
@@ -39,6 +39,16 @@ def owner_id() -> int:
     return int(os.getenv("OWNER_ID", "1852596083"))
 
 
+def owner_ids() -> set[int]:
+    ids = {owner_id()}
+    raw = os.getenv("OWNER_IDS", "").replace(";", ",")
+    for chunk in raw.split(","):
+        value = chunk.strip()
+        if value.isdigit():
+            ids.add(int(value))
+    return ids
+
+
 def bot_token() -> str:
     return os.getenv("BOT_TOKEN", "").strip()
 
@@ -48,7 +58,7 @@ def default_secret() -> str:
 
 
 def load_targets() -> list[BotTarget]:
-    raw = os.getenv("CONTROL_BOTS", "").strip()
+    raw = (os.getenv("CONTROL_BOTS") or os.getenv("CONTROL_TARGETS") or "").strip()
     secret = default_secret()
     targets: list[BotTarget] = []
     for item in raw.split(";"):

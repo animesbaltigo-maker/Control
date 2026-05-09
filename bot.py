@@ -19,10 +19,11 @@ from telegram.ext import (
 )
 
 from control_client import ControlClient
-from control_config import BotTarget, bot_token, load_targets, owner_id
+from control_config import BotTarget, bot_token, load_targets, owner_ids
 
 
-OWNER_ID = owner_id()
+OWNER_IDS = owner_ids()
+OWNER_ID = min(OWNER_IDS) if OWNER_IDS else 0
 TARGETS = load_targets()
 CLIENT = ControlClient()
 
@@ -41,7 +42,7 @@ DRAFTS: dict[int, BroadcastDraft] = {}
 
 
 def is_owner(user_id: int | None) -> bool:
-    return user_id == OWNER_ID
+    return bool(user_id and user_id in OWNER_IDS)
 
 
 def esc(value: object) -> str:
@@ -166,14 +167,40 @@ def broadcast_text(draft: BroadcastDraft, note: str = "") -> str:
     return "\n".join(lines)
 
 
+def config_summary() -> str:
+    owner_list = ", ".join(str(item) for item in sorted(OWNER_IDS)) or "nao configurado"
+    target_lines = "\n".join(
+        f"• <b>{esc(target.name)}</b> <code>{esc(target.base_url)}</code>"
+        for target in TARGETS
+    ) or "Nenhum bot em CONTROL_BOTS."
+    return (
+        "⚙️ <b>Diagnostico do Control</b>\n\n"
+        f"<blockquote>• <b>Owners:</b> <code>{esc(owner_list)}</code>\n"
+        f"• <b>Bots configurados:</b> {len(TARGETS)}</blockquote>\n\n"
+        f"{target_lines}"
+    )
+
+
 async def require_owner(update: Update) -> bool:
     user = update.effective_user
     if is_owner(user.id if user else None):
         return True
     message = update.effective_message
     if message:
-        await message.reply_text("Acesso restrito.")
+        current_id = user.id if user else 0
+        await message.reply_text(
+            f"Acesso restrito.\n\nSeu ID: <code>{current_id}</code>\nConfigure esse ID em <code>OWNER_ID</code> no .env.",
+            parse_mode=ParseMode.HTML,
+        )
     return False
+
+
+async def my_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    await update.effective_message.reply_text(
+        f"Seu ID: <code>{user.id if user else 0}</code>",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 async def central(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -212,6 +239,12 @@ async def metricas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await require_owner(update):
         return
     await update.effective_message.reply_text(await metrics_text(normalize_period(context.args or [])), parse_mode=ParseMode.HTML)
+
+
+async def diagnostico(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await require_owner(update):
+        return
+    await update.effective_message.reply_text(config_summary(), parse_mode=ParseMode.HTML)
 
 
 async def block(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -356,8 +389,13 @@ def main() -> None:
     token = bot_token()
     if not token:
         raise RuntimeError("Configure BOT_TOKEN.")
+    if not TARGETS:
+        print("AVISO: nenhum bot configurado em CONTROL_BOTS.", flush=True)
+    print(f"Control iniciado com {len(TARGETS)} bots e owners {sorted(OWNER_IDS)}.", flush=True)
     app = Application.builder().token(token).build()
+    app.add_handler(CommandHandler("id", my_id))
     app.add_handler(CommandHandler(["start", "central"], central))
+    app.add_handler(CommandHandler(["status", "diagnostico"], diagnostico))
     app.add_handler(CommandHandler("metricas", metricas))
     app.add_handler(CommandHandler("block", block))
     app.add_handler(CommandHandler("broadcast", broadcast))
