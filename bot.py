@@ -237,6 +237,35 @@ def premium_lines(result: dict[str, Any]) -> list[str]:
     return lines
 
 
+def signed_number(value: Any) -> str:
+    if value is None:
+        return "sem histórico"
+    number = int(value or 0)
+    return f"+{number}" if number > 0 else str(number)
+
+
+def channel_lines(result: dict[str, Any]) -> list[str]:
+    channel = result.get("channel")
+    if not isinstance(channel, dict):
+        return []
+    if not channel.get("available"):
+        error = channel.get("error")
+        username = channel.get("username")
+        if error and username:
+            return [f"• <b>Canal:</b> {esc(username)}", f"  - <b>Erro:</b> <code>{esc(error)}</code>"]
+        return []
+    username = channel.get("username")
+    title = esc(channel.get("title") or username or "Canal")
+    subscribers = int(channel.get("subscribers") or 0)
+    deltas = channel.get("deltas") if isinstance(channel.get("deltas"), dict) else {}
+    handle = f"@{esc(username)}" if username else ""
+    return [
+        f"• <b>Canal:</b> {title} {handle}".strip(),
+        f"  - <b>Inscritos:</b> {subscribers:,}".replace(",", "."),
+        f"  - <b>Crescimento:</b> 24h {signed_number(deltas.get('24h'))} • 7d {signed_number(deltas.get('7d'))} • 30d {signed_number(deltas.get('30d'))}",
+    ]
+
+
 async def metrics_text(period: str) -> str:
     results = await asyncio.gather(*(CLIENT.metrics(target, period) for target in TARGETS))
     lines = [f"📊 <b>Estatísticas • Control</b>", ""]
@@ -253,6 +282,7 @@ async def metrics_text(period: str) -> str:
             f"• <b>Administradores:</b> {int(result.get('admins') or 0)}",
         ]
         details.extend(premium_lines(result))
+        details.extend(channel_lines(result))
         lines.append(f"🤖 <b>{name}:</b>\n<blockquote>{chr(10).join(details)}</blockquote>\n")
     return "\n".join(lines)
 
